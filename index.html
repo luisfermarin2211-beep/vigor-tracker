@@ -302,16 +302,33 @@
     {k:'carbs',label:'Carbs',unit:'g',dv:275},
     {k:'fat',label:'Fat',unit:'g',dv:78},
     {k:'fiber',label:'Fiber',unit:'g',dv:28},
-    {k:'sugar',label:'Sugar',unit:'g',dv:50},
+    {k:'sugar',label:'Sugars',unit:'g',dv:50},
     {k:'satfat',label:'Saturated fat',unit:'g',dv:20},
+    {k:'monofat',label:'Monounsat. fat',unit:'g',dv:0},
+    {k:'polyfat',label:'Polyunsat. fat',unit:'g',dv:0},
+    {k:'transfat',label:'Trans fat',unit:'g',dv:0},
+    {k:'cholesterol',label:'Cholesterol',unit:'mg',dv:300},
     {k:'sodium',label:'Sodium',unit:'mg',dv:2300},
     {k:'potassium',label:'Potassium',unit:'mg',dv:4700},
-    {k:'cholesterol',label:'Cholesterol',unit:'mg',dv:300},
     {k:'calcium',label:'Calcium',unit:'mg',dv:1300},
     {k:'iron',label:'Iron',unit:'mg',dv:18},
-    {k:'vitc',label:'Vitamin C',unit:'mg',dv:90},
+    {k:'magnesium',label:'Magnesium',unit:'mg',dv:420},
+    {k:'phosphorus',label:'Phosphorus',unit:'mg',dv:1250},
+    {k:'zinc',label:'Zinc',unit:'mg',dv:11},
+    {k:'copper',label:'Copper',unit:'mg',dv:0.9},
+    {k:'manganese',label:'Manganese',unit:'mg',dv:2.3},
+    {k:'selenium',label:'Selenium',unit:'µg',dv:55},
     {k:'vita',label:'Vitamin A',unit:'µg',dv:900},
-    {k:'vitd',label:'Vitamin D',unit:'µg',dv:20}
+    {k:'vitc',label:'Vitamin C',unit:'mg',dv:90},
+    {k:'vitd',label:'Vitamin D',unit:'µg',dv:20},
+    {k:'vite',label:'Vitamin E',unit:'mg',dv:15},
+    {k:'vitk',label:'Vitamin K',unit:'µg',dv:120},
+    {k:'thiamin',label:'Thiamin (B1)',unit:'mg',dv:1.2},
+    {k:'riboflavin',label:'Riboflavin (B2)',unit:'mg',dv:1.3},
+    {k:'niacin',label:'Niacin (B3)',unit:'mg',dv:16},
+    {k:'vitb6',label:'Vitamin B6',unit:'mg',dv:1.7},
+    {k:'folate',label:'Folate (B9)',unit:'µg',dv:400},
+    {k:'vitb12',label:'Vitamin B12',unit:'µg',dv:2.4}
   ];
   const MICRO = NUTRIENTS.filter(n=>!['protein','carbs','fat'].includes(n.k));
   const ALLKEYS = ['kcal', ...NUTRIENTS.map(n=>n.k)];
@@ -528,7 +545,7 @@
       '&query='+encodeURIComponent(q)+'&pageSize=8&dataType='+encodeURIComponent('Foundation,SR Legacy,Survey (FNDDS)');
     const res=await fetch(url); if(!res.ok) throw new Error('usda '+res.status);
     const data=await res.json();
-    const map={208:'kcal',203:'protein',205:'carbs',204:'fat',291:'fiber',269:'sugar',606:'satfat',307:'sodium',306:'potassium',601:'cholesterol',301:'calcium',303:'iron',401:'vitc',320:'vita',328:'vitd'};
+    const map={208:'kcal',203:'protein',205:'carbs',204:'fat',291:'fiber',269:'sugar',606:'satfat',645:'monofat',646:'polyfat',605:'transfat',601:'cholesterol',307:'sodium',306:'potassium',301:'calcium',303:'iron',304:'magnesium',305:'phosphorus',309:'zinc',312:'copper',315:'manganese',317:'selenium',320:'vita',401:'vitc',328:'vitd',323:'vite',430:'vitk',404:'thiamin',405:'riboflavin',406:'niacin',415:'vitb6',417:'folate',418:'vitb12'};
     return (data.foods||[]).map(fd=>{
       const per100=emptyNutr();
       (fd.foodNutrients||[]).forEach(n=>{ const key=map[n.nutrientNumber]; if(key) per100[key]=n.value||0; });
@@ -544,9 +561,15 @@
       const nu=p.nutriments, per100=emptyNutr();
       per100.kcal=nu['energy-kcal_100g']||0; per100.protein=nu.proteins_100g||0; per100.carbs=nu.carbohydrates_100g||0;
       per100.fat=nu.fat_100g||0; per100.fiber=nu.fiber_100g||0; per100.sugar=nu.sugars_100g||0;
-      per100.satfat=nu['saturated-fat_100g']||0; per100.sodium=(nu.sodium_100g||0)*1000; per100.potassium=(nu.potassium_100g||0)*1000;
+      per100.satfat=nu['saturated-fat_100g']||0; per100.monofat=nu['monounsaturated-fat_100g']||0; per100.polyfat=nu['polyunsaturated-fat_100g']||0; per100.transfat=nu['trans-fat_100g']||0;
+      per100.sodium=(nu.sodium_100g||0)*1000; per100.potassium=(nu.potassium_100g||0)*1000;
       per100.cholesterol=(nu.cholesterol_100g||0)*1000; per100.calcium=(nu.calcium_100g||0)*1000; per100.iron=(nu.iron_100g||0)*1000;
+      per100.magnesium=(nu.magnesium_100g||0)*1000; per100.phosphorus=(nu.phosphorus_100g||0)*1000; per100.zinc=(nu.zinc_100g||0)*1000;
+      per100.copper=(nu.copper_100g||0)*1000; per100.manganese=(nu.manganese_100g||0)*1000; per100.selenium=(nu.selenium_100g||0)*1e6;
       per100.vitc=(nu['vitamin-c_100g']||0)*1000; per100.vita=(nu['vitamin-a_100g']||0)*1e6; per100.vitd=(nu['vitamin-d_100g']||0)*1e6;
+      per100.vite=(nu['vitamin-e_100g']||0)*1000; per100.vitk=(nu['vitamin-k_100g']||0)*1e6;
+      per100.thiamin=(nu['vitamin-b1_100g']||0)*1000; per100.riboflavin=(nu['vitamin-b2_100g']||0)*1000; per100.niacin=(nu['vitamin-pp_100g']||0)*1000;
+      per100.vitb6=(nu['vitamin-b6_100g']||0)*1000; per100.folate=(nu['vitamin-b9_100g']||0)*1e6; per100.vitb12=(nu['vitamin-b12_100g']||0)*1e6;
       return { name:p.product_name, serving:100, per100, source:'OpenFood' };
     }).filter(x=>x.per100.kcal||x.per100.protein).slice(0,8);
   }
@@ -634,7 +657,7 @@
         headers:{'content-type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
         body:JSON.stringify({ model:'claude-3-5-sonnet-20241022', max_tokens:500, messages:[{role:'user',content:[
           {type:'image',source:{type:'base64',media_type:pendingPhoto.media_type,data:pendingPhoto.base64}},
-          {type:'text',text:'Identify the food and estimate nutrition for the portion shown. Respond ONLY with minified JSON: {"name":string,"grams":number,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sugar":number,"satfat":number,"sodium":number,"potassium":number,"cholesterol":number,"calcium":number,"iron":number,"vitc":number,"vita":number,"vitd":number}. Macros & fiber/sugar/satfat in grams; sodium/potassium/cholesterol/calcium/iron/vitc in mg; vita/vitd in micrograms; grams = portion weight. Best estimate if unsure.'}
+          {type:'text',text:'Identify the food and estimate nutrition for the portion shown. Respond ONLY with minified JSON with these keys: name(string), grams, calories, protein, carbs, fat, fiber, sugar, satfat, monofat, polyfat, transfat, cholesterol, sodium, potassium, calcium, iron, magnesium, phosphorus, zinc, copper, manganese, selenium, vita, vitc, vitd, vite, vitk, thiamin, riboflavin, niacin, vitb6, folate, vitb12. Units: protein/carbs/fat/fiber/sugar/all fats in grams; cholesterol/sodium/potassium/calcium/iron/magnesium/phosphorus/zinc/copper/manganese/vitc/vite/thiamin/riboflavin/niacin/vitb6 in mg; selenium/vita/vitd/vitk/folate/vitb12 in micrograms; grams = portion weight. Use 0 for unknown, best estimate otherwise.'}
         ]}] })
       });
       if(!res.ok){ const t=await res.text(); throw new Error('API '+res.status+': '+t.slice(0,140)); }
@@ -643,7 +666,7 @@
       const est=JSON.parse(m[0]);
       // build a pseudo selectedFood (per100 derived from portion) so micros are stored
       const g=est.grams||100; const per100=emptyNutr();
-      ['protein','carbs','fat','fiber','sugar','satfat','sodium','potassium','cholesterol','calcium','iron','vitc','vita','vitd'].forEach(k=> per100[k]=(est[k]||0)*100/g);
+      NUTRIENTS.map(n=>n.k).forEach(k=> per100[k]=(est[k]||0)*100/g);
       per100.kcal=(est.calories||kcalFromMacros(est.protein||0,est.carbs||0,est.fat||0))*100/g;
       selectedFood={ name:est.name||'Photo food', serving:g, per100, source:'AI' };
       if(est.name) $('#foodName').value=est.name; $('#grams').value=Math.round(g);
