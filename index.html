@@ -606,6 +606,11 @@ window.__startVigorApp = function(session){
   let usdaKey=store.get('vigor_usdakey','');
   let profile = B.profile || null; // {name,sex,age,heightCm,weightKg,activity,goal,calTarget,macros:{protein,carbs,fat}}
   let macroTargets=profile?profile.macros:null;
+  let nutrientTargets=profile?(profile.nutrientTargets||null):null;
+  // backfill personalized nutrient targets for profiles made before this feature
+  if(profile && !nutrientTargets && profile.age && profile.sex){
+    try{ nutrientTargets=computeTargets(profile, profile.calTarget||goal); profile.nutrientTargets=nutrientTargets; }catch(e){}
+  }
   let pendingPhoto=null;
   let selectedFood=null; // {name, per100, serving, source}
   let suppNutrients=[]; // [{k,amount}]
@@ -652,13 +657,18 @@ window.__startVigorApp = function(session){
         (tgt?'<div class="mtarget">of '+tgt+'g target</div>':'')+'</div>';
     }).join('');
 
+    const personalized = !!nutrientTargets;
     $('#micros').innerHTML=MICRO.map(n=>{
-      const v=tot[n.k]||0; const dvp=n.dv?Math.min(100,(v/n.dv)*100):0;
+      const v=tot[n.k]||0;
+      const target = (nutrientTargets && nutrientTargets[n.k]) || n.dv;
+      const pct = target ? Math.min(100,(v/target)*100) : 0;
       const disp=v>=100?Math.round(v):Math.round(v*10)/10;
+      const tlabel = target ? (' / '+(target>=100?Math.round(target):Math.round(target*10)/10)+' '+n.unit) : '';
       return '<div class="micro-row"><div class="mr-top"><span class="mr-name">'+n.label+'</span>'+
-        '<span class="mr-val">'+disp+' '+n.unit+' <span style="color:var(--muted)">'+Math.round(dvp)+'% DV</span></span></div>'+
-        '<div class="mr-bar"><span class="'+(dvp>=100?'high':'')+'" style="width:'+dvp+'%"></span></div></div>';
+        '<span class="mr-val">'+disp+' '+n.unit+'<span style="color:var(--muted)">'+tlabel+' · '+Math.round(pct)+'%</span></span></div>'+
+        '<div class="mr-bar"><span class="'+(pct>=100?'high':'')+'" style="width:'+pct+'%"></span></div></div>';
     }).join('');
+    $('#microToggle').textContent=($('#micros').classList.contains('show')?'▾ Hide':'▸ Show')+' vitamins & minerals'+(personalized?' (your targets)':'');
   }
 
   function renderLog(){
@@ -952,12 +962,54 @@ window.__startVigorApp = function(session){
     const tdee = bmr * p.activity;
     const goalMult = p.goal==='cut'?0.80 : p.goal==='bulk'?1.10 : 1.0;
     const cals = p.calOverride || Math.round(tdee*goalMult/10)*10;
-    const proteinPerKg = p.goal==='cut'?2.2 : p.goal==='bulk'?1.8 : 2.0;
+    // protein-first: high intake, with a growth boost for teens (<19)
+    const teen = p.age<19;
+    let proteinPerKg = p.goal==='cut'?2.2 : p.goal==='bulk'?1.8 : 2.0;
+    if(teen) proteinPerKg = Math.max(proteinPerKg, 2.0); // support growth
     const protein = Math.round(proteinPerKg*p.weightKg);
     const fat = Math.round(0.9*p.weightKg);
     let carbs = Math.round((cals - protein*4 - fat*9)/4);
     if(carbs<0) carbs=0;
-    return { bmr:Math.round(bmr), tdee:Math.round(tdee), calTarget:cals, macros:{protein,carbs,fat} };
+    const targets = computeTargets(p, cals);
+    return { bmr:Math.round(bmr), tdee:Math.round(tdee), calTarget:cals, macros:{protein,carbs,fat}, targets:targets };
+  }
+
+  // Age/sex-specific micronutrient targets (US RDA/AI), tuned for growth,
+  // gut health (fiber) & general health. Applies to all goal plans.
+  function rdaFor(age, sex){
+    const male = sex==='male', teen = age<19, older = age>50, old = age>70;
+    const t = {};
+    t.calcium = teen ? 1300 : (older ? 1200 : 1000);
+    t.iron = teen ? (male ? 11 : 15) : (male ? 8 : (older ? 8 : 18));
+    t.magnesium = male ? (teen ? 410 : 420) : (teen ? 360 : 320);
+    t.phosphorus = teen ? 1250 : 700;
+    t.zinc = male ? 11 : (teen ? 9 : 8);
+    t.copper = 0.9;
+    t.manganese = male ? 2.3 : 1.8;
+    t.selenium = 55;
+    t.vita = teen ? (male ? 900 : 700) : (male ? 900 : 700);
+    t.vitc = teen ? (male ? 75 : 65) : (male ? 90 : 75);
+    t.vitd = old ? 20 : 15;
+    t.vite = 15;
+    t.vitk = male ? 120 : 90;
+    t.thiamin = male ? 1.2 : 1.1;
+    t.riboflavin = male ? 1.3 : 1.1;
+    t.niacin = male ? 16 : 14;
+    t.vitb6 = older ? (male ? 1.7 : 1.5) : 1.3;
+    t.folate = 400;
+    t.vitb12 = 2.4;
+    t.potassium = teen ? (male ? 3000 : 2300) : (male ? 3400 : 2600);
+    return t;
+  }
+  function computeTargets(p, cals){
+    const t = rdaFor(p.age, p.sex);
+    t.fiber = Math.round(14 * cals / 1000);   // 14 g per 1000 kcal — gut health
+    t.sodium = 2300;                            // upper limit
+    t.satfat = Math.round(0.10 * cals / 9);     // <10% of calories
+    t.sugar = Math.round(0.10 * cals / 4);      // added-sugar guidance
+    t.cholesterol = 300;                        // upper limit
+    t.transfat = 2;                             // keep minimal
+    return t;
   }
 
   function readProfileForm(){
@@ -984,20 +1036,29 @@ window.__startVigorApp = function(session){
     if(r.err){ $('#obErr').textContent=r.err; return; }
     $('#obErr').textContent='';
     const plan=computePlan(r);
-    draftProfile={ ...r, calTarget:plan.calTarget, macros:plan.macros };
+    draftProfile={ ...r, calTarget:plan.calTarget, macros:plan.macros, nutrientTargets:plan.targets };
     const goalLabel={cut:'Cut (fat loss)',recomp:'Body recomposition',bulk:'Lean bulk'}[r.goal];
     $('#planCals').innerHTML=plan.calTarget.toLocaleString()+' <small>kcal / day</small>';
     $('#planMeta').innerHTML='BMR ≈ '+plan.bmr.toLocaleString()+' kcal · Maintenance (TDEE) ≈ '+plan.tdee.toLocaleString()+' kcal · Goal: <b style="color:var(--text)">'+goalLabel+'</b>';
     $('#planMacros').innerHTML=[['Protein',plan.macros.protein],['Carbs',plan.macros.carbs],['Fat',plan.macros.fat]]
       .map(([l,g])=>'<div class="pm"><b>'+g+'g</b><span>'+l+'</span></div>').join('');
-    $('#planNote').innerHTML='Protein '+(Math.round(plan.macros.protein/r.weightKg*10)/10)+' g/kg · fat '+(Math.round(plan.macros.fat/r.weightKg*10)/10)+' g/kg. '+
-      (r.goal==='cut'?'A ~20% deficit targets steady fat loss while protein protects muscle.':r.goal==='bulk'?'A ~10% surplus supports lean muscle gain with minimal fat.':'Eating at maintenance with high protein supports recomposition.');
+    // personalized nutrient targets summary
+    const T=plan.targets;
+    const keyMicros=[['fiber','Fiber','g'],['calcium','Calcium','mg'],['iron','Iron','mg'],['vitd','Vitamin D','µg'],
+      ['vitc','Vitamin C','mg'],['potassium','Potassium','mg'],['magnesium','Magnesium','mg'],['zinc','Zinc','mg'],['vitb12','B12','µg']];
+    const targetGrid=keyMicros.map(([k,l,u])=>'<div class="pm"><b style="font-size:15px">'+Math.round(T[k])+(u==='g'?'g':u)+'</b><span>'+l+'</span></div>').join('');
+    $('#planNote').innerHTML=
+      '<div style="margin:6px 0 14px"><b style="color:var(--text)">Protein '+(Math.round(plan.macros.protein/r.weightKg*10)/10)+' g/kg</b> — prioritized'+(r.age<19?' with a growth boost for your age':'')+'. '+
+      (r.goal==='cut'?'A ~20% deficit protects muscle while losing fat.':r.goal==='bulk'?'A ~10% surplus builds lean muscle.':'Maintenance + high protein supports recomposition.')+'</div>'+
+      '<div style="font-weight:600;color:var(--text);margin-bottom:8px">Daily nutrient targets (for your age & sex)</div>'+
+      '<div class="pmac" style="grid-template-columns:repeat(3,1fr)">'+targetGrid+'</div>'+
+      '<div style="margin-top:12px">Fiber set for <b style="color:var(--text)">gut health</b> (14 g per 1,000 kcal); calcium, vitamin D, iron, zinc &amp; B12 tuned for '+(r.age<19?'growth and ':'')+'general health. The full panel of every vitamin &amp; mineral tracks against these in your daily view. Limits (sodium, saturated fat, added sugar) are also personalized.</div>';
     $('#obForm').style.display='none'; $('#obResult').style.display='block'; $('#obTitle').textContent='Your plan'; $('#obLead').textContent='Based on the science below. You can fine-tune anytime in your profile.';
     window.scrollTo(0,0);
   };
   $('#planBack').onclick=()=>{ $('#obResult').style.display='none'; $('#obForm').style.display='grid'; $('#obTitle').textContent=profile?'Edit profile':'Welcome to Vigor'; $('#obLead').textContent="Let's set up your profile. We'll calculate a science-based calorie & macro target for your goal."; window.scrollTo(0,0); };
   $('#planStart').onclick=()=>{
-    profile=draftProfile; macroTargets=profile.macros; goal=profile.calTarget;
+    profile=draftProfile; macroTargets=profile.macros; nutrientTargets=profile.nutrientTargets||null; goal=profile.calTarget;
     save();
     $('#onboarding').classList.remove('show');
     renderAll();
