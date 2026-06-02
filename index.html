@@ -202,9 +202,79 @@
   .supp-nutr-row { display:grid; grid-template-columns:1fr 90px auto; gap:8px; }
   .supp-list-line { font-size:12px; color:var(--muted); }
   .icon-btn.small { width:32px; height:32px; font-size:14px; }
+
+  /* auth gate */
+  body:not(.authed) .wrap { display:none; }
+  .auth-bg { position:fixed; inset:0; background:var(--bg); z-index:200; overflow-y:auto; display:grid; place-items:center; padding:24px; }
+  .auth-bg.hidden { display:none; }
+  .auth-card { max-width:400px; width:100%; }
+  .auth-card .logo-lg { width:54px; height:54px; border-radius:14px; background:linear-gradient(135deg,var(--accent),#2fae6e); display:grid; place-items:center; font-weight:800; color:#04130b; font-size:28px; margin:0 auto 18px; }
+  .auth-card h1 { font-size:24px; letter-spacing:-0.5px; text-align:center; margin-bottom:4px; }
+  .auth-card .sub { color:var(--muted); font-size:13.5px; text-align:center; margin-bottom:24px; }
+  .auth-tabs { display:flex; gap:6px; background:var(--panel-2); border:1px solid var(--line); border-radius:11px; padding:5px; margin-bottom:20px; }
+  .auth-tabs button { flex:1; background:transparent; border:none; color:var(--muted); padding:10px; border-radius:8px; cursor:pointer; font-family:inherit; font-size:14px; font-weight:600; }
+  .auth-tabs button.active { background:var(--accent); color:#04130b; }
+  .auth-view { display:none; }
+  .auth-view.show { display:block; }
+  .auth-view .fld { margin-bottom:12px; }
+  .auth-view label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
+  .auth-view .btn { width:100%; padding:13px; margin-top:6px; }
+  .auth-msg { font-size:13px; min-height:18px; margin:10px 0 0; text-align:center; }
+  .auth-msg.err { color:var(--over); }
+  .auth-msg.ok { color:var(--accent); }
+  .auth-link { background:none; border:none; color:var(--blue); cursor:pointer; font-size:13px; font-family:inherit; padding:0; margin-top:14px; display:block; text-align:center; width:100%; }
+  .auth-foot { color:#5d6772; font-size:11.5px; text-align:center; margin-top:22px; line-height:1.5; }
 </style>
 </head>
 <body>
+<!-- AUTH GATE -->
+<div class="auth-bg" id="authGate">
+  <div class="auth-card">
+    <div class="logo-lg">V</div>
+    <h1>Vigor</h1>
+    <p class="sub">Track your nutrition, macros &amp; fitness goals.</p>
+
+    <div class="auth-tabs" id="authTabs">
+      <button data-v="login" class="active">Log in</button>
+      <button data-v="signup">Create account</button>
+    </div>
+
+    <!-- login -->
+    <div class="auth-view show" id="viewLogin">
+      <div class="fld"><label>Email or username</label><input type="text" id="liId" autocomplete="username" placeholder="you@email.com or username" /></div>
+      <div class="fld"><label>Password</label><input type="password" id="liPw" autocomplete="current-password" placeholder="••••••••" /></div>
+      <button class="btn" id="liBtn">Log in</button>
+      <button class="auth-link" id="toForgot">Forgot your password?</button>
+    </div>
+
+    <!-- signup -->
+    <div class="auth-view" id="viewSignup">
+      <div class="fld"><label>Email</label><input type="email" id="suEmail" autocomplete="email" placeholder="you@email.com" /></div>
+      <div class="fld"><label>Username</label><input type="text" id="suUser" autocomplete="username" placeholder="choose a username" /></div>
+      <div class="fld"><label>Password <span style="font-size:10px">(min 6 characters)</span></label><input type="password" id="suPw" autocomplete="new-password" placeholder="••••••••" /></div>
+      <button class="btn" id="suBtn">Create account</button>
+    </div>
+
+    <!-- verify -->
+    <div class="auth-view" id="viewVerify">
+      <p class="sub" id="verifyText" style="margin-bottom:18px"></p>
+      <button class="btn" id="veCheck">I've verified — continue</button>
+      <button class="auth-link" id="veResend">Resend verification email</button>
+      <button class="auth-link" id="veBack">Use a different account</button>
+    </div>
+
+    <!-- forgot -->
+    <div class="auth-view" id="viewForgot">
+      <div class="fld"><label>Email or username</label><input type="text" id="fpId" placeholder="you@email.com or username" /></div>
+      <button class="btn" id="fpBtn">Send reset link</button>
+      <button class="auth-link" id="fpBack">← Back to log in</button>
+    </div>
+
+    <p class="auth-msg" id="authMsg"></p>
+    <p class="auth-foot">Your account is secured by Google Firebase. We email a link to verify your address and to reset passwords.</p>
+  </div>
+</div>
+
 <div class="wrap">
   <header class="top">
     <div class="brand">
@@ -415,12 +485,18 @@
       <button class="btn" id="saveKeys">Save</button>
       <button class="btn ghost" id="closeSettings" style="margin-left:auto">Close</button>
     </div>
-    <p style="margin-top:16px; margin-bottom:0">All keys stay on this device. Nutrition values are approximate — verify before relying on them.</p>
+
+    <h4>Account</h4>
+    <p id="acctLine" style="margin-bottom:10px">—</p>
+    <button class="btn ghost" id="logoutBtn">Log out</button>
+
+    <p style="margin-top:16px; margin-bottom:0">Keys stay on this device. Your food &amp; profile data syncs to your account. Nutrition values are approximate — verify before relying on them.</p>
   </div>
 </div>
 
 <script>
-(function(){
+window.__startVigorApp = function(session){
+  if(window.__vigorStarted) return; window.__vigorStarted=true;
   const $ = s => document.querySelector(s);
   const store = {
     get(k,d){ try{ const v=JSON.parse(localStorage.getItem(k)); return v===null?d:v; }catch{ return d; } },
@@ -506,18 +582,21 @@
     return { name:r[0], serving:r[1], per100, source:'built-in' };
   });
 
+  // ---- per-user data bundle (from cloud, falling back to local cache) ----
+  const CACHE='vigor_cache_'+session.uid;
+  const B = session.initial || store.get(CACHE, {}) || {};
   // state
-  let goal=store.get('vigor_goal',2000);
-  let foods=store.get('vigor_foods',[]);
-  let goals=store.get('vigor_goals',[
+  let goal = (B.goal!=null) ? B.goal : 2000;
+  let foods = B.foods || [];
+  let goals = B.goals || [
     {id:id(),name:'Steps',current:0,target:10000,step:500},
     {id:id(),name:'Workout minutes',current:0,target:45,step:5}
-  ]);
-  let history=store.get('vigor_history',[]);
-  let day=store.get('vigor_day',todayStr());
-  let apiKey=store.get('vigor_apikey','');
+  ];
+  let history = B.history || [];
+  let day = B.day || todayStr();
+  let apiKey=store.get('vigor_apikey',''); // device-level
   let usdaKey=store.get('vigor_usdakey','');
-  let profile=store.get('vigor_profile',null); // {name,sex,age,heightCm,weightKg,activity,goal,calTarget,macros:{protein,carbs,fat}}
+  let profile = B.profile || null; // {name,sex,age,heightCm,weightKg,activity,goal,calTarget,macros:{protein,carbs,fat}}
   let macroTargets=profile?profile.macros:null;
   let pendingPhoto=null;
   let selectedFood=null; // {name, per100, serving, source}
@@ -529,8 +608,9 @@
     return t;
   }
   function save(){
-    store.set('vigor_goal',goal); store.set('vigor_foods',foods); store.set('vigor_goals',goals);
-    store.set('vigor_history',history); store.set('vigor_day',day);
+    const bundle={goal,foods,goals,history,day,profile};
+    store.set(CACHE, bundle);            // instant local cache (offline)
+    if(session.persist) session.persist(bundle); // sync to cloud (debounced)
   }
 
   function checkRollover(){
@@ -910,7 +990,7 @@
   $('#planBack').onclick=()=>{ $('#obResult').style.display='none'; $('#obForm').style.display='grid'; $('#obTitle').textContent=profile?'Edit profile':'Welcome to Vigor'; $('#obLead').textContent="Let's set up your profile. We'll calculate a science-based calorie & macro target for your goal."; window.scrollTo(0,0); };
   $('#planStart').onclick=()=>{
     profile=draftProfile; macroTargets=profile.macros; goal=profile.calTarget;
-    store.set('vigor_profile',profile); save();
+    save();
     $('#onboarding').classList.remove('show');
     renderAll();
   };
@@ -956,12 +1036,160 @@
     save(); renderNutrition(); renderSuppLog();
   };
 
+  // ---- account / logout ----
+  if($('#acctLine')) $('#acctLine').textContent='Signed in as '+(session.username?('@'+session.username+' · '):'')+(session.email||'');
+  if($('#logoutBtn')) $('#logoutBtn').onclick=()=>{ if(window.__vigorLogout) window.__vigorLogout(); };
+
   // ---- init ----
   $('#today').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});
   if(!profile){ $('#onboarding').classList.add('show'); }
   checkRollover(); renderAll();
   setInterval(()=>{ if(todayStr()!==day){ checkRollover(); renderAll(); } }, 60000);
-})();
+};
+</script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  sendEmailVerification, sendPasswordResetEmail, onAuthStateChanged, signOut,
+  updateProfile, reload } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAG-SZECwT4RQ1BqUIx-xL0-ttHWULTQQM",
+  authDomain: "vigor-tracker-47ad8.firebaseapp.com",
+  projectId: "vigor-tracker-47ad8",
+  storageBucket: "vigor-tracker-47ad8.firebasestorage.app",
+  messagingSenderId: "753601073919",
+  appId: "1:753601073919:web:5902b6a967f62ca346f2ca",
+  measurementId: "G-41HZDW5FKY"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const $ = s => document.querySelector(s);
+const gate = $('#authGate');
+const msg = (t,k)=>{ const e=$('#authMsg'); e.textContent=t||''; e.className='auth-msg '+(k||''); };
+const views = { login:$('#viewLogin'), signup:$('#viewSignup'), verify:$('#viewVerify'), forgot:$('#viewForgot') };
+function show(v){ Object.values(views).forEach(x=>x.classList.remove('show')); views[v].classList.add('show'); msg(''); }
+
+// tabs
+$('#authTabs').querySelectorAll('button').forEach(b=> b.onclick=()=>{
+  $('#authTabs').querySelectorAll('button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); show(b.dataset.v);
+});
+$('#toForgot').onclick=()=>show('forgot');
+$('#fpBack').onclick=()=>show('login');
+$('#veBack').onclick=()=>{ signOut(auth); show('login'); };
+
+const niceErr = e => ({
+  'auth/email-already-in-use':'That email already has an account. Try logging in.',
+  'auth/invalid-email':'That email address looks invalid.',
+  'auth/weak-password':'Password must be at least 6 characters.',
+  'auth/invalid-credential':'Wrong email/username or password.',
+  'auth/user-not-found':'No account with those details.',
+  'auth/wrong-password':'Incorrect password.',
+  'auth/too-many-requests':'Too many attempts. Wait a bit and try again.'
+}[e.code] || (e.message||'Something went wrong.').replace('Firebase: ','');
+
+async function usernameToEmail(name){
+  try{ const snap=await getDoc(doc(db,'usernames',name.toLowerCase())); return snap.exists()?snap.data().email:null; }
+  catch(e){ return null; }
+}
+
+// ---- sign up ----
+$('#suBtn').onclick=async()=>{
+  const email=$('#suEmail').value.trim(), username=$('#suUser').value.trim(), pw=$('#suPw').value;
+  if(!email||!username||!pw){ msg('Fill in all fields.','err'); return; }
+  if(!/^[a-zA-Z0-9_.]{3,20}$/.test(username)){ msg('Username: 3–20 letters, numbers, _ or .','err'); return; }
+  $('#suBtn').disabled=true; msg('Creating account…');
+  try{
+    // username uniqueness
+    const taken=await getDoc(doc(db,'usernames',username.toLowerCase())).catch(()=>null);
+    if(taken && taken.exists()){ msg('That username is taken.','err'); $('#suBtn').disabled=false; return; }
+    const cred=await createUserWithEmailAndPassword(auth,email,pw);
+    await updateProfile(cred.user,{displayName:username}).catch(()=>{});
+    await setDoc(doc(db,'usernames',username.toLowerCase()),{email,uid:cred.user.uid}).catch(()=>{});
+    await setDoc(doc(db,'users',cred.user.uid),{email,username},{merge:true}).catch(()=>{});
+    await sendEmailVerification(cred.user);
+    showVerify(email);
+  }catch(e){ msg(niceErr(e),'err'); }
+  finally{ $('#suBtn').disabled=false; }
+};
+
+// ---- log in ----
+$('#liBtn').onclick=doLogin;
+$('#liPw').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+async function doLogin(){
+  let idv=$('#liId').value.trim(); const pw=$('#liPw').value;
+  if(!idv||!pw){ msg('Enter your login and password.','err'); return; }
+  $('#liBtn').disabled=true; msg('Logging in…');
+  try{
+    let email=idv;
+    if(!idv.includes('@')){ const e=await usernameToEmail(idv); if(!e){ msg('No account with that username.','err'); $('#liBtn').disabled=false; return; } email=e; }
+    await signInWithEmailAndPassword(auth,email,pw);
+    // onAuthStateChanged handles the rest
+  }catch(e){ msg(niceErr(e),'err'); }
+  finally{ $('#liBtn').disabled=false; }
+}
+
+// ---- forgot password ----
+$('#fpBtn').onclick=async()=>{
+  let idv=$('#fpId').value.trim(); if(!idv){ msg('Enter your email or username.','err'); return; }
+  $('#fpBtn').disabled=true; msg('Sending…');
+  try{
+    let email=idv;
+    if(!idv.includes('@')){ const e=await usernameToEmail(idv); if(!e){ msg('No account with that username.','err'); $('#fpBtn').disabled=false; return; } email=e; }
+    await sendPasswordResetEmail(auth,email);
+    msg('Reset link sent to '+email+'. Check your inbox.','ok');
+  }catch(e){ msg(niceErr(e),'err'); }
+  finally{ $('#fpBtn').disabled=false; }
+};
+
+// ---- verify view ----
+function showVerify(email){ $('#verifyText').innerHTML='We sent a verification link to <b style="color:var(--text)">'+email+'</b>. Open it, then tap continue.'; show('verify'); }
+$('#veResend').onclick=async()=>{ if(auth.currentUser){ try{ await sendEmailVerification(auth.currentUser); msg('Verification email re-sent.','ok'); }catch(e){ msg(niceErr(e),'err'); } } };
+$('#veCheck').onclick=async()=>{
+  if(!auth.currentUser) return;
+  msg('Checking…');
+  await reload(auth.currentUser);
+  if(auth.currentUser.emailVerified){ msg('Verified!','ok'); launch(auth.currentUser); }
+  else msg('Not verified yet — click the link in your email first.','err');
+};
+
+// ---- cloud persistence ----
+let saveTimer=null;
+function makePersist(uid){
+  return (bundle)=>{ clearTimeout(saveTimer); saveTimer=setTimeout(()=>{
+    setDoc(doc(db,'users',uid),{bundle},{merge:true}).catch(e=>console.warn('sync failed',e));
+  }, 1200); };
+}
+async function loadBundle(uid){
+  try{ const snap=await getDoc(doc(db,'users',uid)); return snap.exists()?(snap.data().bundle||null):null; }
+  catch(e){ return null; }
+}
+
+// ---- launch app ----
+let launched=false;
+async function launch(user){
+  if(launched) return; launched=true;
+  let username=user.displayName;
+  if(!username){ try{ const s=await getDoc(doc(db,'users',user.uid)); username=s.exists()?s.data().username:null; }catch(e){} }
+  const initial=await loadBundle(user.uid);
+  window.__vigorLogout=()=>{ signOut(auth).then(()=>location.reload()); };
+  gate.classList.add('hidden');
+  document.body.classList.add('authed');
+  window.__startVigorApp({ uid:user.uid, email:user.email, username, initial, persist:makePersist(user.uid) });
+}
+
+// ---- auth state ----
+onAuthStateChanged(auth, user=>{
+  if(!user){ gate.classList.remove('hidden'); show('login'); return; }
+  if(!user.emailVerified){ gate.classList.remove('hidden'); showVerify(user.email); return; }
+  launch(user);
+});
 </script>
 </body>
 </html>
