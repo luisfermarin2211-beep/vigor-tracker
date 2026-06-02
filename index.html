@@ -1049,11 +1049,26 @@ window.__startVigorApp = function(session){
 </script>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  sendEmailVerification, sendPasswordResetEmail, onAuthStateChanged, signOut,
-  updateProfile, reload } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+const $ = s => document.querySelector(s);
+const msg = (t,k)=>{ const e=$('#authMsg'); if(e){ e.textContent=t||''; e.className='auth-msg '+(k||''); } };
+// surface any load/runtime error on screen so failures are never silent
+window.addEventListener('error', ev=> msg('Load error: '+(ev.message||ev.error||'unknown'),'err'));
+window.addEventListener('unhandledrejection', ev=> msg('Error: '+((ev.reason&&ev.reason.message)||ev.reason||'unknown'),'err'));
+
+let initializeApp, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+    sendEmailVerification, sendPasswordResetEmail, onAuthStateChanged, signOut, updateProfile, reload;
+let getFirestore, doc, getDoc, setDoc;
+let app, auth, db=null;
+
+try {
+  ({ initializeApp } = await import("https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js"));
+  ({ getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+     sendEmailVerification, sendPasswordResetEmail, onAuthStateChanged, signOut,
+     updateProfile, reload } = await import("https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js"));
+} catch(e){
+  msg('Could not load Firebase (check your internet connection and reload).','err');
+  throw e;
+}
 
 const firebaseConfig = {
   apiKey: "AIzaSyAG-SZECwT4RQ1BqUIx-xL0-ttHWULTQQM",
@@ -1065,13 +1080,20 @@ const firebaseConfig = {
   measurementId: "G-41HZDW5FKY"
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+} catch(e){ msg('Firebase init failed: '+(e.message||e),'err'); throw e; }
 
-const $ = s => document.querySelector(s);
+// Firestore is OPTIONAL — load it without blocking auth. Username login & cloud
+// sync need it; if it fails to load, email login still works.
+try {
+  const fs = await import("https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js");
+  ({ getFirestore, doc, getDoc, setDoc } = fs);
+  db = getFirestore(app);
+} catch(e){ console.warn('Firestore unavailable — username/sync disabled', e); db=null; }
+
 const gate = $('#authGate');
-const msg = (t,k)=>{ const e=$('#authMsg'); e.textContent=t||''; e.className='auth-msg '+(k||''); };
 const views = { login:$('#viewLogin'), signup:$('#viewSignup'), verify:$('#viewVerify'), forgot:$('#viewForgot') };
 function show(v){ Object.values(views).forEach(x=>x.classList.remove('show')); views[v].classList.add('show'); msg(''); }
 
@@ -1091,10 +1113,15 @@ const niceErr = e => ({
   'auth/invalid-credential':'Wrong email/username or password.',
   'auth/user-not-found':'No account with those details.',
   'auth/wrong-password':'Incorrect password.',
-  'auth/too-many-requests':'Too many attempts. Wait a bit and try again.'
+  'auth/too-many-requests':'Too many attempts. Wait a bit and try again.',
+  'auth/operation-not-allowed':'Email/Password sign-in is OFF in Firebase. Enable it: Authentication → Sign-in method → Email/Password → Enable.',
+  'auth/unauthorized-domain':'This site’s domain isn’t authorized in Firebase. Add it under Authentication → Settings → Authorized domains.',
+  'auth/api-key-not-valid':'The Firebase API key is invalid.',
+  'auth/network-request-failed':'Network error — check your connection.'
 }[e.code] || (e.message||'Something went wrong.').replace('Firebase: ','');
 
 async function usernameToEmail(name){
+  if(!db) return null;
   try{ const snap=await getDoc(doc(db,'usernames',name.toLowerCase())); return snap.exists()?snap.data().email:null; }
   catch(e){ return null; }
 }
@@ -1106,13 +1133,17 @@ $('#suBtn').onclick=async()=>{
   if(!/^[a-zA-Z0-9_.]{3,20}$/.test(username)){ msg('Username: 3–20 letters, numbers, _ or .','err'); return; }
   $('#suBtn').disabled=true; msg('Creating account…');
   try{
-    // username uniqueness
-    const taken=await getDoc(doc(db,'usernames',username.toLowerCase())).catch(()=>null);
-    if(taken && taken.exists()){ msg('That username is taken.','err'); $('#suBtn').disabled=false; return; }
+    // username uniqueness (only if Firestore available)
+    if(db){
+      const taken=await getDoc(doc(db,'usernames',username.toLowerCase())).catch(()=>null);
+      if(taken && taken.exists()){ msg('That username is taken.','err'); $('#suBtn').disabled=false; return; }
+    }
     const cred=await createUserWithEmailAndPassword(auth,email,pw);
     await updateProfile(cred.user,{displayName:username}).catch(()=>{});
-    await setDoc(doc(db,'usernames',username.toLowerCase()),{email,uid:cred.user.uid}).catch(()=>{});
-    await setDoc(doc(db,'users',cred.user.uid),{email,username},{merge:true}).catch(()=>{});
+    if(db){
+      await setDoc(doc(db,'usernames',username.toLowerCase()),{email,uid:cred.user.uid}).catch(()=>{});
+      await setDoc(doc(db,'users',cred.user.uid),{email,username},{merge:true}).catch(()=>{});
+    }
     await sendEmailVerification(cred.user);
     showVerify(email);
   }catch(e){ msg(niceErr(e),'err'); }
@@ -1162,11 +1193,12 @@ $('#veCheck').onclick=async()=>{
 // ---- cloud persistence ----
 let saveTimer=null;
 function makePersist(uid){
-  return (bundle)=>{ clearTimeout(saveTimer); saveTimer=setTimeout(()=>{
+  return (bundle)=>{ if(!db) return; clearTimeout(saveTimer); saveTimer=setTimeout(()=>{
     setDoc(doc(db,'users',uid),{bundle},{merge:true}).catch(e=>console.warn('sync failed',e));
   }, 1200); };
 }
 async function loadBundle(uid){
+  if(!db) return null;
   try{ const snap=await getDoc(doc(db,'users',uid)); return snap.exists()?(snap.data().bundle||null):null; }
   catch(e){ return null; }
 }
