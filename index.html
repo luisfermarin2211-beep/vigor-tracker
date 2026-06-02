@@ -255,23 +255,31 @@
       <button class="btn" id="suBtn">Create account</button>
     </div>
 
-    <!-- verify -->
+    <!-- verify (code entry, used for signup + reset) -->
     <div class="auth-view" id="viewVerify">
-      <p class="sub" id="verifyText" style="margin-bottom:18px"></p>
-      <button class="btn" id="veCheck">I've verified — continue</button>
-      <button class="auth-link" id="veResend">Resend verification email</button>
-      <button class="auth-link" id="veBack">Use a different account</button>
+      <p class="sub" id="verifyText" style="margin-bottom:16px"></p>
+      <div class="fld"><label>Verification code</label><input type="text" id="veCode" inputmode="numeric" maxlength="6" placeholder="6-digit code" /></div>
+      <button class="btn" id="veCheck">Continue</button>
+      <button class="auth-link" id="veBack">← Back</button>
+    </div>
+
+    <!-- reset password (after code) -->
+    <div class="auth-view" id="viewReset">
+      <p class="sub" style="margin-bottom:16px">Choose a new password.</p>
+      <div class="fld"><label>New password <span style="font-size:10px">(min 6 characters)</span></label><input type="password" id="rsPw" autocomplete="new-password" placeholder="••••••••" /></div>
+      <button class="btn" id="rsBtn">Set new password</button>
+      <button class="auth-link" id="rsBack">← Back to log in</button>
     </div>
 
     <!-- forgot -->
     <div class="auth-view" id="viewForgot">
       <div class="fld"><label>Email or username</label><input type="text" id="fpId" placeholder="you@email.com or username" /></div>
-      <button class="btn" id="fpBtn">Send reset link</button>
+      <button class="btn" id="fpBtn">Send reset code</button>
       <button class="auth-link" id="fpBack">← Back to log in</button>
     </div>
 
     <p class="auth-msg" id="authMsg"></p>
-    <p class="auth-foot">Your account is secured by Google Firebase. We email a link to verify your address and to reset passwords.</p>
+    <p class="auth-foot">Accounts are stored on this device. No internet or setup required.</p>
   </div>
 </div>
 
@@ -1048,176 +1056,133 @@ window.__startVigorApp = function(session){
 };
 </script>
 
-<script type="module">
-const $ = s => document.querySelector(s);
-const msg = (t,k)=>{ const e=$('#authMsg'); if(e){ e.textContent=t||''; e.className='auth-msg '+(k||''); } };
+<script>
+/* ============================================================
+   Vigor accounts — fully self-contained. No server, no setup.
+   Accounts live in this browser's localStorage. Verification &
+   reset codes are shown on-screen (a hosted version would email).
+   ============================================================ */
+(function(){
+  var $ = function(s){ return document.querySelector(s); };
+  function msg(t,k){ var e=$('#authMsg'); if(e){ e.textContent=t||''; e.className='auth-msg '+(k||''); } }
 
-// ---- UI navigation: bound IMMEDIATELY, works with or without Firebase ----
-const gate = $('#authGate');
-const views = { login:$('#viewLogin'), signup:$('#viewSignup'), verify:$('#viewVerify'), forgot:$('#viewForgot') };
-function show(v){ Object.values(views).forEach(x=> x && x.classList.remove('show')); if(views[v]) views[v].classList.add('show'); msg(''); }
-$('#authTabs').querySelectorAll('button').forEach(b=> b.onclick=()=>{
-  $('#authTabs').querySelectorAll('button').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active'); show(b.dataset.v);
-});
-$('#toForgot').onclick=()=>show('forgot');
-$('#fpBack').onclick=()=>show('login');
+  var gate = $('#authGate');
+  var views = { login:$('#viewLogin'), signup:$('#viewSignup'), verify:$('#viewVerify'),
+                reset:$('#viewReset'), forgot:$('#viewForgot') };
+  function show(v){
+    for(var key in views){ if(views[key]) views[key].classList.remove('show'); }
+    if(views[v]) views[v].classList.add('show');
+    msg('');
+  }
 
-// ---- Firebase holders (filled in once the SDK loads) ----
-let auth=null, db=null, fbReady=false;
-let createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification,
-    sendPasswordResetEmail, signOut, updateProfile, reload, doc, getDoc, setDoc;
-function needFb(){ if(!fbReady){ msg('Still connecting to the server — wait a second and try again.','err'); return true; } return false; }
+  // ---- account storage ----
+  var ACC='vigor_accounts';
+  function getAccounts(){ try{ return JSON.parse(localStorage.getItem(ACC)) || []; }catch(e){ return []; } }
+  function setAccounts(a){ localStorage.setItem(ACC, JSON.stringify(a)); }
+  function newUid(){ return 'u'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+  function hash(s){ var h=5381; for(var i=0;i<s.length;i++){ h=((h*33)^s.charCodeAt(i))>>>0; } return h.toString(16); }
+  function byEmail(e){ var a=getAccounts(); for(var i=0;i<a.length;i++){ if(a[i].email.toLowerCase()===e.toLowerCase()) return a[i]; } return null; }
+  function byUser(u){ var a=getAccounts(); for(var i=0;i<a.length;i++){ if(a[i].username.toLowerCase()===u.toLowerCase()) return a[i]; } return null; }
+  function genCode(){ return ''+Math.floor(100000+Math.random()*900000); }
 
-$('#veBack').onclick=()=>{ if(signOut&&auth) signOut(auth); show('login'); };
+  var pending=null; // { mode:'signup'|'reset', code, data }
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAG-SZECwT4RQ1BqUIx-xL0-ttHWULTQQM",
-  authDomain: "vigor-tracker-47ad8.firebaseapp.com",
-  projectId: "vigor-tracker-47ad8",
-  storageBucket: "vigor-tracker-47ad8.firebasestorage.app",
-  messagingSenderId: "753601073919",
-  appId: "1:753601073919:web:5902b6a967f62ca346f2ca",
-  measurementId: "G-41HZDW5FKY"
-};
+  // ---- navigation (bound immediately) ----
+  var tabBtns = $('#authTabs').querySelectorAll('button');
+  for(var i=0;i<tabBtns.length;i++){
+    (function(b){ b.onclick=function(){
+      for(var j=0;j<tabBtns.length;j++){ tabBtns[j].classList.remove('active'); }
+      b.classList.add('active'); show(b.getAttribute('data-v'));
+    }; })(tabBtns[i]);
+  }
+  $('#toForgot').onclick=function(){ show('forgot'); };
+  $('#fpBack').onclick=function(){ show('login'); };
+  $('#rsBack').onclick=function(){ pending=null; show('login'); };
+  $('#veBack').onclick=function(){ pending=null; show('login'); };
 
-// ---- load Firebase asynchronously (NO top-level await; UI already interactive) ----
-(async ()=>{
-  try{
-    const appMod  = await import("https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js");
-    const authMod = await import("https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js");
-    createUserWithEmailAndPassword = authMod.createUserWithEmailAndPassword;
-    signInWithEmailAndPassword = authMod.signInWithEmailAndPassword;
-    sendEmailVerification = authMod.sendEmailVerification;
-    sendPasswordResetEmail = authMod.sendPasswordResetEmail;
-    signOut = authMod.signOut; updateProfile = authMod.updateProfile; reload = authMod.reload;
-    const app = appMod.initializeApp(firebaseConfig);
-    auth = authMod.getAuth(app);
-    try{
-      const fs = await import("https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js");
-      doc=fs.doc; getDoc=fs.getDoc; setDoc=fs.setDoc; db=fs.getFirestore(app);
-    }catch(e){ console.warn('Firestore unavailable — username/sync disabled', e); db=null; }
-    fbReady=true;
-    authMod.onAuthStateChanged(auth, user=>{
-      if(!user){ gate.classList.remove('hidden'); return; }
-      if(!user.emailVerified){ gate.classList.remove('hidden'); showVerify(user.email); return; }
-      launch(user);
-    });
-  }catch(e){ msg('Could not connect to the server (check your internet) — '+(e.message||e),'err'); }
+  // ---- launch into the app ----
+  function launch(acc){
+    localStorage.setItem('vigor_authed_uid', acc.uid);
+    window.__vigorLogout=function(){ localStorage.removeItem('vigor_authed_uid'); location.reload(); };
+    gate.classList.add('hidden');
+    document.body.classList.add('authed');
+    window.__startVigorApp({ uid:acc.uid, email:acc.email, username:acc.username, initial:null });
+  }
+
+  // ---- sign up ----
+  $('#suBtn').onclick=function(){
+    var email=$('#suEmail').value.trim(), username=$('#suUser').value.trim(), pw=$('#suPw').value;
+    if(!email||!username||!pw){ msg('Fill in all fields.','err'); return; }
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ msg('Enter a valid email address.','err'); return; }
+    if(!/^[a-zA-Z0-9_.]{3,20}$/.test(username)){ msg('Username: 3–20 letters, numbers, _ or .','err'); return; }
+    if(pw.length<6){ msg('Password must be at least 6 characters.','err'); return; }
+    if(byEmail(email)){ msg('That email already has an account. Log in instead.','err'); return; }
+    if(byUser(username)){ msg('That username is taken.','err'); return; }
+    var code=genCode();
+    pending={ mode:'signup', code:code, data:{ email:email, username:username, pw:pw } };
+    $('#verifyText').innerHTML='Confirm <b style="color:var(--text)">'+email+'</b> with this code:'
+      +'<br><span style="font-size:30px;letter-spacing:5px;color:var(--accent);font-weight:800">'+code+'</span>'
+      +'<br><span style="font-size:11px">A hosted version emails this — here it’s shown on-screen.</span>';
+    $('#veCode').value=''; show('verify'); $('#veCode').focus();
+  };
+
+  // ---- verify code (signup or reset) ----
+  $('#veCheck').onclick=function(){
+    if(!pending){ show('login'); return; }
+    if($('#veCode').value.trim()!==pending.code){ msg('That code is incorrect. Try again.','err'); return; }
+    if(pending.mode==='signup'){
+      var acc={ uid:newUid(), email:pending.data.email, username:pending.data.username,
+                pwHash:hash(pending.data.pw), verified:true };
+      var all=getAccounts(); all.push(acc); setAccounts(all);
+      var saved=pending; pending=null; launch(acc);
+    } else { // reset → go set a new password
+      show('reset'); $('#rsPw').value=''; $('#rsPw').focus();
+    }
+  };
+
+  // ---- login ----
+  $('#liBtn').onclick=doLogin;
+  $('#liPw').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+  function doLogin(){
+    var idv=$('#liId').value.trim(), pw=$('#liPw').value;
+    if(!idv||!pw){ msg('Enter your login and password.','err'); return; }
+    var acc = idv.indexOf('@')>-1 ? byEmail(idv) : byUser(idv);
+    if(!acc){ msg('No account found with that email or username.','err'); return; }
+    if(acc.pwHash!==hash(pw)){ msg('Incorrect password.','err'); return; }
+    launch(acc);
+  }
+
+  // ---- forgot password → send (show) code ----
+  $('#fpBtn').onclick=function(){
+    var idv=$('#fpId').value.trim();
+    if(!idv){ msg('Enter your email or username.','err'); return; }
+    var acc = idv.indexOf('@')>-1 ? byEmail(idv) : byUser(idv);
+    if(!acc){ msg('No account found with that email or username.','err'); return; }
+    var code=genCode();
+    pending={ mode:'reset', code:code, data:{ uid:acc.uid } };
+    $('#verifyText').innerHTML='Reset code for <b style="color:var(--text)">'+acc.email+'</b>:'
+      +'<br><span style="font-size:30px;letter-spacing:5px;color:var(--accent);font-weight:800">'+code+'</span>'
+      +'<br><span style="font-size:11px">A hosted version emails this — here it’s shown on-screen.</span>';
+    $('#veCode').value=''; show('verify'); $('#veCode').focus();
+  };
+
+  // ---- set new password ----
+  $('#rsBtn').onclick=function(){
+    if(!pending || pending.mode!=='reset'){ show('login'); return; }
+    var pw=$('#rsPw').value;
+    if(pw.length<6){ msg('Password must be at least 6 characters.','err'); return; }
+    var all=getAccounts();
+    for(var i=0;i<all.length;i++){ if(all[i].uid===pending.data.uid){ all[i].pwHash=hash(pw); } }
+    setAccounts(all); pending=null;
+    show('login'); msg('Password updated — log in with your new password.','ok');
+  };
+
+  // ---- on load: auto-login if a session exists, else show gate ----
+  var activeUid=localStorage.getItem('vigor_authed_uid');
+  var active = activeUid ? (function(){ var a=getAccounts(); for(var i=0;i<a.length;i++){ if(a[i].uid===activeUid) return a[i]; } return null; })() : null;
+  if(active){ launch(active); }
+  else { gate.classList.remove('hidden'); show('login'); }
 })();
-
-const niceErr = e => ({
-  'auth/email-already-in-use':'That email already has an account. Try logging in.',
-  'auth/invalid-email':'That email address looks invalid.',
-  'auth/weak-password':'Password must be at least 6 characters.',
-  'auth/invalid-credential':'Wrong email/username or password.',
-  'auth/user-not-found':'No account with those details.',
-  'auth/wrong-password':'Incorrect password.',
-  'auth/too-many-requests':'Too many attempts. Wait a bit and try again.',
-  'auth/operation-not-allowed':'Email/Password sign-in is OFF in Firebase. Enable it: Authentication → Sign-in method → Email/Password → Enable.',
-  'auth/unauthorized-domain':'This site’s domain isn’t authorized in Firebase. Add it under Authentication → Settings → Authorized domains.',
-  'auth/api-key-not-valid':'The Firebase API key is invalid.',
-  'auth/network-request-failed':'Network error — check your connection.'
-}[e.code] || (e.message||'Something went wrong.').replace('Firebase: ','');
-
-async function usernameToEmail(name){
-  if(!db) return null;
-  try{ const snap=await getDoc(doc(db,'usernames',name.toLowerCase())); return snap.exists()?snap.data().email:null; }
-  catch(e){ return null; }
-}
-
-// ---- sign up ----
-$('#suBtn').onclick=async()=>{
-  if(needFb()) return;
-  const email=$('#suEmail').value.trim(), username=$('#suUser').value.trim(), pw=$('#suPw').value;
-  if(!email||!username||!pw){ msg('Fill in all fields.','err'); return; }
-  if(!/^[a-zA-Z0-9_.]{3,20}$/.test(username)){ msg('Username: 3–20 letters, numbers, _ or .','err'); return; }
-  $('#suBtn').disabled=true; msg('Creating account…');
-  try{
-    // username uniqueness (only if Firestore available)
-    if(db){
-      const taken=await getDoc(doc(db,'usernames',username.toLowerCase())).catch(()=>null);
-      if(taken && taken.exists()){ msg('That username is taken.','err'); $('#suBtn').disabled=false; return; }
-    }
-    const cred=await createUserWithEmailAndPassword(auth,email,pw);
-    await updateProfile(cred.user,{displayName:username}).catch(()=>{});
-    if(db){
-      await setDoc(doc(db,'usernames',username.toLowerCase()),{email,uid:cred.user.uid}).catch(()=>{});
-      await setDoc(doc(db,'users',cred.user.uid),{email,username},{merge:true}).catch(()=>{});
-    }
-    await sendEmailVerification(cred.user);
-    showVerify(email);
-  }catch(e){ msg(niceErr(e),'err'); }
-  finally{ $('#suBtn').disabled=false; }
-};
-
-// ---- log in ----
-$('#liBtn').onclick=doLogin;
-$('#liPw').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
-async function doLogin(){
-  if(needFb()) return;
-  let idv=$('#liId').value.trim(); const pw=$('#liPw').value;
-  if(!idv||!pw){ msg('Enter your login and password.','err'); return; }
-  $('#liBtn').disabled=true; msg('Logging in…');
-  try{
-    let email=idv;
-    if(!idv.includes('@')){ const e=await usernameToEmail(idv); if(!e){ msg('No account with that username.','err'); $('#liBtn').disabled=false; return; } email=e; }
-    await signInWithEmailAndPassword(auth,email,pw);
-    // onAuthStateChanged handles the rest
-  }catch(e){ msg(niceErr(e),'err'); }
-  finally{ $('#liBtn').disabled=false; }
-}
-
-// ---- forgot password ----
-$('#fpBtn').onclick=async()=>{
-  if(needFb()) return;
-  let idv=$('#fpId').value.trim(); if(!idv){ msg('Enter your email or username.','err'); return; }
-  $('#fpBtn').disabled=true; msg('Sending…');
-  try{
-    let email=idv;
-    if(!idv.includes('@')){ const e=await usernameToEmail(idv); if(!e){ msg('No account with that username.','err'); $('#fpBtn').disabled=false; return; } email=e; }
-    await sendPasswordResetEmail(auth,email);
-    msg('Reset link sent to '+email+'. Check your inbox.','ok');
-  }catch(e){ msg(niceErr(e),'err'); }
-  finally{ $('#fpBtn').disabled=false; }
-};
-
-// ---- verify view ----
-function showVerify(email){ $('#verifyText').innerHTML='We sent a verification link to <b style="color:var(--text)">'+email+'</b>. Open it, then tap continue.'; show('verify'); }
-$('#veResend').onclick=async()=>{ if(auth.currentUser){ try{ await sendEmailVerification(auth.currentUser); msg('Verification email re-sent.','ok'); }catch(e){ msg(niceErr(e),'err'); } } };
-$('#veCheck').onclick=async()=>{
-  if(!auth.currentUser) return;
-  msg('Checking…');
-  await reload(auth.currentUser);
-  if(auth.currentUser.emailVerified){ msg('Verified!','ok'); launch(auth.currentUser); }
-  else msg('Not verified yet — click the link in your email first.','err');
-};
-
-// ---- cloud persistence ----
-let saveTimer=null;
-function makePersist(uid){
-  return (bundle)=>{ if(!db) return; clearTimeout(saveTimer); saveTimer=setTimeout(()=>{
-    setDoc(doc(db,'users',uid),{bundle},{merge:true}).catch(e=>console.warn('sync failed',e));
-  }, 1200); };
-}
-async function loadBundle(uid){
-  if(!db) return null;
-  try{ const snap=await getDoc(doc(db,'users',uid)); return snap.exists()?(snap.data().bundle||null):null; }
-  catch(e){ return null; }
-}
-
-// ---- launch app ----
-let launched=false;
-async function launch(user){
-  if(launched) return; launched=true;
-  let username=user.displayName;
-  if(!username){ try{ const s=await getDoc(doc(db,'users',user.uid)); username=s.exists()?s.data().username:null; }catch(e){} }
-  const initial=await loadBundle(user.uid);
-  window.__vigorLogout=()=>{ signOut(auth).then(()=>location.reload()); };
-  gate.classList.add('hidden');
-  document.body.classList.add('authed');
-  window.__startVigorApp({ uid:user.uid, email:user.email, username, initial, persist:makePersist(user.uid) });
-}
 </script>
 </body>
 </html>
