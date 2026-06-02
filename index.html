@@ -1051,24 +1051,25 @@ window.__startVigorApp = function(session){
 <script type="module">
 const $ = s => document.querySelector(s);
 const msg = (t,k)=>{ const e=$('#authMsg'); if(e){ e.textContent=t||''; e.className='auth-msg '+(k||''); } };
-// surface any load/runtime error on screen so failures are never silent
-window.addEventListener('error', ev=> msg('Load error: '+(ev.message||ev.error||'unknown'),'err'));
-window.addEventListener('unhandledrejection', ev=> msg('Error: '+((ev.reason&&ev.reason.message)||ev.reason||'unknown'),'err'));
 
-let initializeApp, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-    sendEmailVerification, sendPasswordResetEmail, onAuthStateChanged, signOut, updateProfile, reload;
-let getFirestore, doc, getDoc, setDoc;
-let app, auth, db=null;
+// ---- UI navigation: bound IMMEDIATELY, works with or without Firebase ----
+const gate = $('#authGate');
+const views = { login:$('#viewLogin'), signup:$('#viewSignup'), verify:$('#viewVerify'), forgot:$('#viewForgot') };
+function show(v){ Object.values(views).forEach(x=> x && x.classList.remove('show')); if(views[v]) views[v].classList.add('show'); msg(''); }
+$('#authTabs').querySelectorAll('button').forEach(b=> b.onclick=()=>{
+  $('#authTabs').querySelectorAll('button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); show(b.dataset.v);
+});
+$('#toForgot').onclick=()=>show('forgot');
+$('#fpBack').onclick=()=>show('login');
 
-try {
-  ({ initializeApp } = await import("https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js"));
-  ({ getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-     sendEmailVerification, sendPasswordResetEmail, onAuthStateChanged, signOut,
-     updateProfile, reload } = await import("https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js"));
-} catch(e){
-  msg('Could not load Firebase (check your internet connection and reload).','err');
-  throw e;
-}
+// ---- Firebase holders (filled in once the SDK loads) ----
+let auth=null, db=null, fbReady=false;
+let createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification,
+    sendPasswordResetEmail, signOut, updateProfile, reload, doc, getDoc, setDoc;
+function needFb(){ if(!fbReady){ msg('Still connecting to the server — wait a second and try again.','err'); return true; } return false; }
+
+$('#veBack').onclick=()=>{ if(signOut&&auth) signOut(auth); show('login'); };
 
 const firebaseConfig = {
   apiKey: "AIzaSyAG-SZECwT4RQ1BqUIx-xL0-ttHWULTQQM",
@@ -1080,31 +1081,30 @@ const firebaseConfig = {
   measurementId: "G-41HZDW5FKY"
 };
 
-try {
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-} catch(e){ msg('Firebase init failed: '+(e.message||e),'err'); throw e; }
-
-// Firestore is OPTIONAL — load it without blocking auth. Username login & cloud
-// sync need it; if it fails to load, email login still works.
-try {
-  const fs = await import("https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js");
-  ({ getFirestore, doc, getDoc, setDoc } = fs);
-  db = getFirestore(app);
-} catch(e){ console.warn('Firestore unavailable — username/sync disabled', e); db=null; }
-
-const gate = $('#authGate');
-const views = { login:$('#viewLogin'), signup:$('#viewSignup'), verify:$('#viewVerify'), forgot:$('#viewForgot') };
-function show(v){ Object.values(views).forEach(x=>x.classList.remove('show')); views[v].classList.add('show'); msg(''); }
-
-// tabs
-$('#authTabs').querySelectorAll('button').forEach(b=> b.onclick=()=>{
-  $('#authTabs').querySelectorAll('button').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active'); show(b.dataset.v);
-});
-$('#toForgot').onclick=()=>show('forgot');
-$('#fpBack').onclick=()=>show('login');
-$('#veBack').onclick=()=>{ signOut(auth); show('login'); };
+// ---- load Firebase asynchronously (NO top-level await; UI already interactive) ----
+(async ()=>{
+  try{
+    const appMod  = await import("https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js");
+    const authMod = await import("https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js");
+    createUserWithEmailAndPassword = authMod.createUserWithEmailAndPassword;
+    signInWithEmailAndPassword = authMod.signInWithEmailAndPassword;
+    sendEmailVerification = authMod.sendEmailVerification;
+    sendPasswordResetEmail = authMod.sendPasswordResetEmail;
+    signOut = authMod.signOut; updateProfile = authMod.updateProfile; reload = authMod.reload;
+    const app = appMod.initializeApp(firebaseConfig);
+    auth = authMod.getAuth(app);
+    try{
+      const fs = await import("https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js");
+      doc=fs.doc; getDoc=fs.getDoc; setDoc=fs.setDoc; db=fs.getFirestore(app);
+    }catch(e){ console.warn('Firestore unavailable — username/sync disabled', e); db=null; }
+    fbReady=true;
+    authMod.onAuthStateChanged(auth, user=>{
+      if(!user){ gate.classList.remove('hidden'); return; }
+      if(!user.emailVerified){ gate.classList.remove('hidden'); showVerify(user.email); return; }
+      launch(user);
+    });
+  }catch(e){ msg('Could not connect to the server (check your internet) — '+(e.message||e),'err'); }
+})();
 
 const niceErr = e => ({
   'auth/email-already-in-use':'That email already has an account. Try logging in.',
@@ -1128,6 +1128,7 @@ async function usernameToEmail(name){
 
 // ---- sign up ----
 $('#suBtn').onclick=async()=>{
+  if(needFb()) return;
   const email=$('#suEmail').value.trim(), username=$('#suUser').value.trim(), pw=$('#suPw').value;
   if(!email||!username||!pw){ msg('Fill in all fields.','err'); return; }
   if(!/^[a-zA-Z0-9_.]{3,20}$/.test(username)){ msg('Username: 3–20 letters, numbers, _ or .','err'); return; }
@@ -1154,6 +1155,7 @@ $('#suBtn').onclick=async()=>{
 $('#liBtn').onclick=doLogin;
 $('#liPw').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
 async function doLogin(){
+  if(needFb()) return;
   let idv=$('#liId').value.trim(); const pw=$('#liPw').value;
   if(!idv||!pw){ msg('Enter your login and password.','err'); return; }
   $('#liBtn').disabled=true; msg('Logging in…');
@@ -1168,6 +1170,7 @@ async function doLogin(){
 
 // ---- forgot password ----
 $('#fpBtn').onclick=async()=>{
+  if(needFb()) return;
   let idv=$('#fpId').value.trim(); if(!idv){ msg('Enter your email or username.','err'); return; }
   $('#fpBtn').disabled=true; msg('Sending…');
   try{
@@ -1215,13 +1218,6 @@ async function launch(user){
   document.body.classList.add('authed');
   window.__startVigorApp({ uid:user.uid, email:user.email, username, initial, persist:makePersist(user.uid) });
 }
-
-// ---- auth state ----
-onAuthStateChanged(auth, user=>{
-  if(!user){ gate.classList.remove('hidden'); show('login'); return; }
-  if(!user.emailVerified){ gate.classList.remove('hidden'); showVerify(user.email); return; }
-  launch(user);
-});
 </script>
 </body>
 </html>
