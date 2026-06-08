@@ -558,8 +558,8 @@
       </div>
       <div class="frow">
         <div>
-          <label>Age</label>
-          <input type="number" id="pAge" placeholder="years" min="13" max="100" />
+          <label>Date of birth</label>
+          <input type="date" id="pDob" />
         </div>
         <div>
           <label>Biological sex <span style="font-size:10px">(for BMR formula)</span></label>
@@ -1186,21 +1186,32 @@ window.__startVigorApp = function(session){
     return t;
   }
 
+  function ageFromDob(dob){
+    if(!dob) return NaN;
+    const d=new Date(dob+'T00:00'), now=new Date();
+    if(isNaN(d.getTime())) return NaN;
+    let a=now.getFullYear()-d.getFullYear();
+    const m=now.getMonth()-d.getMonth();
+    if(m<0 || (m===0 && now.getDate()<d.getDate())) a--;
+    return a;
+  }
   function readProfileForm(){
     const name=$('#pName').value.trim();
-    const age=parseInt($('#pAge').value,10);
+    const dob=$('#pDob').value;
+    const age=ageFromDob(dob);
     let heightCm, weightKg;
     if(obState.hUnit==='cm') heightCm=parseFloat($('#pHeightCm').value);
     else { const ft=parseFloat($('#pHeightFt').value)||0, inch=parseFloat($('#pHeightIn').value)||0; heightCm=(ft*12+inch)*2.54; }
     weightKg = obState.wUnit==='kg' ? parseFloat($('#pWeight').value) : parseFloat($('#pWeight').value)*0.453592;
     const calOverride=parseInt($('#pCalOverride').value,10)||0;
-    if(!age||age<13) return {err:'Enter a valid age.'};
+    if(!dob || isNaN(age)) return {err:'Enter your date of birth.'};
+    if(age<13 || age>100) return {err:'Date of birth must be for ages 13–100.'};
     if(!obState.sex) return {err:'Select your biological sex.'};
     if(!heightCm||heightCm<100) return {err:'Enter a valid height.'};
     if(!weightKg||weightKg<30) return {err:'Enter a valid weight.'};
     if(!obState.activity) return {err:'Select an activity level.'};
     if(!obState.goal) return {err:'Select your goal.'};
-    return { name, age, sex:obState.sex, heightCm:Math.round(heightCm), weightKg:Math.round(weightKg*10)/10,
+    return { name, dob, age, sex:obState.sex, heightCm:Math.round(heightCm), weightKg:Math.round(weightKg*10)/10,
              activity:parseFloat(obState.activity), goal:obState.goal, calOverride };
   }
 
@@ -1240,7 +1251,7 @@ window.__startVigorApp = function(session){
 
   function prefillProfileForm(){
     if(!profile) return;
-    $('#pName').value=profile.name||''; $('#pAge').value=profile.age||'';
+    $('#pName').value=profile.name||''; $('#pDob').value=profile.dob||'';
     $('#pHeightCm').value=profile.heightCm||''; obState.hUnit='cm'; $('#uHcm').click();
     obState.wUnit='kg'; $('#uWkg').click(); $('#pWeight').value=profile.weightKg||'';
     $('#pCalOverride').value='';
