@@ -636,6 +636,11 @@
     <label for="apiKey">Anthropic API key</label>
     <input type="password" id="apiKey" placeholder="sk-ant-…" />
 
+    <h4>WHOOP sync (optional)</h4>
+    <p>Paste the URL of your WHOOP backend (Cloudflare Worker) to auto-import recovery, strain &amp; sleep. Leave blank for manual entry.</p>
+    <label for="whoopUrl">WHOOP backend URL</label>
+    <input type="text" id="whoopUrl" placeholder="https://vigor-whoop.xxxx.workers.dev" />
+
     <div class="mrow">
       <button class="btn" id="saveKeys">Save</button>
       <button class="btn ghost" id="closeSettings" style="margin-left:auto">Close</button>
@@ -761,6 +766,7 @@ window.__startVigorApp = function(session){
   let day = B.day || todayStr();
   let apiKey=store.get('vigor_apikey',''); // device-level
   let usdaKey=store.get('vigor_usdakey','');
+  let whoopUrl=store.get('vigor_whoopurl','');
   let profile = B.profile || null; // {name,sex,age,heightCm,weightKg,activity,goal,calTarget,macros:{protein,carbs,fat}}
   let macroTargets=profile?profile.macros:null;
   let nutrientTargets=profile?(profile.nutrientTargets||null):null;
@@ -1101,11 +1107,13 @@ window.__startVigorApp = function(session){
   function showAi(msg,kind){ const el=$('#aiMsg'); el.style.display='block'; el.className='ai-msg '+(kind||''); el.textContent=msg; }
 
   // ---- settings ----
-  $('#openSettings').onclick=()=>{ $('#apiKey').value=apiKey; $('#usdaKey').value=usdaKey; $('#settingsModal').classList.add('show'); };
+  $('#openSettings').onclick=()=>{ $('#apiKey').value=apiKey; $('#usdaKey').value=usdaKey; $('#whoopUrl').value=whoopUrl; $('#settingsModal').classList.add('show'); };
   $('#closeSettings').onclick=()=>$('#settingsModal').classList.remove('show');
   $('#settingsModal').addEventListener('click',e=>{ if(e.target===$('#settingsModal')) $('#settingsModal').classList.remove('show'); });
   $('#saveKeys').onclick=()=>{ apiKey=$('#apiKey').value.trim(); usdaKey=$('#usdaKey').value.trim();
-    store.set('vigor_apikey',apiKey); store.set('vigor_usdakey',usdaKey); $('#settingsModal').classList.remove('show'); };
+    whoopUrl=$('#whoopUrl').value.trim().replace(/\/$/,'');
+    store.set('vigor_apikey',apiKey); store.set('vigor_usdakey',usdaKey); store.set('vigor_whoopurl',whoopUrl);
+    $('#settingsModal').classList.remove('show'); renderWhoop(); };
 
   // ---- onboarding / profile ----
   let obState={ sex:null, activity:null, goal:null, hUnit:'cm', wUnit:'kg' };
@@ -1360,7 +1368,13 @@ window.__startVigorApp = function(session){
     $('#wRec').value=w.rec!=null?w.rec:''; $('#wStrain').value=w.strain!=null?w.strain:'';
     $('#wHrv').value=w.hrv!=null?w.hrv:''; $('#wRhr').value=w.rhr!=null?w.rhr:''; $('#wSleep').value=w.sleep!=null?w.sleep:'';
     const has=Object.keys(w).length;
-    $('#whoopState').textContent = has?'logged today':'manual entry';
+    const tok=store.get('vigor_whoop_token','');
+    $('#whoopState').textContent = tok ? 'linked ✓' : (whoopUrl ? 'ready to link' : (has?'logged today':'manual entry'));
+    // connect button reflects state
+    const cb=$('#connectWhoop');
+    if(tok){ cb.textContent='↻ Sync from WHOOP'; }
+    else if(whoopUrl){ cb.textContent='🔗 Link my WHOOP account'; }
+    else { cb.textContent='🔗 Connect WHOOP account'; }
     const bits=[];
     if(w.rec!=null) bits.push('Recovery <b>'+w.rec+'%</b>');
     if(w.strain!=null) bits.push('Strain <b>'+w.strain+'</b>');
@@ -1370,14 +1384,64 @@ window.__startVigorApp = function(session){
     $('#whoopToday').innerHTML = bits.length? bits.map(b=>'<span class="wt">'+b+'</span>').join('') : '';
   }
   $('#saveWhoop').onclick=()=>{
-    const t=todayStr(); const w={};
+    const t=todayStr(); const w=whoop[t]||{};
     const rec=parseFloat($('#wRec').value), st=parseFloat($('#wStrain').value), hrv=parseFloat($('#wHrv').value), rhr=parseFloat($('#wRhr').value), sl=parseFloat($('#wSleep').value);
     if(!isNaN(rec))w.rec=rec; if(!isNaN(st))w.strain=st; if(!isNaN(hrv))w.hrv=hrv; if(!isNaN(rhr))w.rhr=rhr; if(!isNaN(sl))w.sleep=sl;
     whoop[t]=w; save(); renderWhoop(); flash('#saveWhoop','Saved ✓');
   };
-  $('#connectWhoop').onclick=()=> $('#whoopModal').classList.add('show');
+  $('#connectWhoop').onclick=()=>{
+    const tok=store.get('vigor_whoop_token','');
+    if(tok){ syncWhoop(); return; }                       // already linked → pull data
+    if(whoopUrl){ window.location.href = whoopUrl + '/login'; return; } // start OAuth
+    $('#whoopModal').classList.add('show');                // not configured → explain
+  };
   $('#whoopClose').onclick=()=> $('#whoopModal').classList.remove('show');
   $('#whoopModal').addEventListener('click',e=>{ if(e.target===$('#whoopModal')) $('#whoopModal').classList.remove('show'); });
+
+  // ---- WHOOP: capture token from OAuth redirect, then pull data ----
+  function captureWhoopToken(){
+    if(!location.hash || location.hash.indexOf('whoop=')<0) return;
+    const p=new URLSearchParams(location.hash.slice(1));
+    const tok=p.get('whoop'), rf=p.get('refresh');
+    if(tok){ store.set('vigor_whoop_token',tok); if(rf) store.set('vigor_whoop_refresh',rf); }
+    history.replaceState(null,'',location.pathname+location.search); // clean URL
+    if(tok) setTimeout(syncWhoop, 300);
+  }
+  async function whoopFetch(token){
+    const r=await fetch(whoopUrl+'/data?token='+encodeURIComponent(token));
+    if(r.status===401) return 401;
+    return r.ok ? r.json() : null;
+  }
+  async function syncWhoop(){
+    if(!whoopUrl){ $('#whoopState').textContent='set backend URL in ⚙'; return; }
+    let token=store.get('vigor_whoop_token','');
+    if(!token){ window.location.href=whoopUrl+'/login'; return; }
+    $('#whoopState').textContent='syncing…';
+    try{
+      let data=await whoopFetch(token);
+      if(data===401){ // refresh
+        const rf=store.get('vigor_whoop_refresh','');
+        const rr=await fetch(whoopUrl+'/refresh?refresh='+encodeURIComponent(rf));
+        const nt=rr.ok?await rr.json():null;
+        if(nt&&nt.access_token){ token=nt.access_token; store.set('vigor_whoop_token',token); if(nt.refresh_token) store.set('vigor_whoop_refresh',nt.refresh_token); data=await whoopFetch(token); }
+        else { store.set('vigor_whoop_token',''); $('#whoopState').textContent='please re-link'; renderWhoop(); return; }
+      }
+      if(!data){ $('#whoopState').textContent='sync failed'; return; }
+      const t=todayStr(); const w=whoop[t]||{};
+      const rec=data.rec&&data.rec.records&&data.rec.records[0];
+      if(rec&&rec.score){ if(rec.score.recovery_score!=null)w.rec=Math.round(rec.score.recovery_score);
+        if(rec.score.hrv_rmssd_milli!=null)w.hrv=Math.round(rec.score.hrv_rmssd_milli);
+        if(rec.score.resting_heart_rate!=null)w.rhr=Math.round(rec.score.resting_heart_rate); }
+      const cyc=data.cycle&&data.cycle.records&&data.cycle.records[0];
+      if(cyc&&cyc.score&&cyc.score.strain!=null) w.strain=Math.round(cyc.score.strain*10)/10;
+      const slp=data.sleep&&data.sleep.records&&data.sleep.records[0];
+      if(slp&&slp.score&&slp.score.stage_summary){ const ss=slp.score.stage_summary;
+        const ms=(ss.total_light_sleep_time_milli||0)+(ss.total_slow_wave_sleep_time_milli||0)+(ss.total_rem_sleep_time_milli||0);
+        if(ms) w.sleep=Math.round(ms/3600000*10)/10; }
+      whoop[t]=w; save(); renderWhoop(); $('#whoopState').textContent='linked ✓ synced';
+    }catch(e){ $('#whoopState').textContent='sync error'; }
+  }
+  captureWhoopToken();
 
   // ===================== HEALTH: workouts =====================
   function renderWorkouts(){
