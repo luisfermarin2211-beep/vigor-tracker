@@ -224,6 +224,55 @@
   .auth-msg.ok { color:var(--accent); }
   .auth-link { background:none; border:none; color:var(--blue); cursor:pointer; font-size:13px; font-family:inherit; padding:0; margin-top:14px; display:block; text-align:center; width:100%; }
   .auth-foot { color:#5d6772; font-size:11.5px; text-align:center; margin-top:22px; line-height:1.5; }
+
+  /* ---- life-app: nav + pages ---- */
+  .tabs-nav { display:flex; gap:6px; background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:5px; margin-bottom:24px; }
+  .tabs-nav button { flex:1; background:transparent; border:none; color:var(--muted); padding:11px; border-radius:8px; cursor:pointer; font-family:inherit; font-size:14px; font-weight:600; }
+  .tabs-nav button.active { background:var(--accent); color:#04130b; }
+  .page { display:none; }
+  .page.show { display:block; }
+
+  /* planner */
+  .task-add { display:grid; grid-template-columns:1fr 100px 150px auto; gap:8px; margin-bottom:16px; }
+  @media (max-width:560px){ .task-add { grid-template-columns:1fr 1fr; } }
+  .task-list { display:flex; flex-direction:column; gap:8px; }
+  .task { display:flex; align-items:center; gap:11px; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:11px 13px; }
+  .task .chk { width:20px; height:20px; border-radius:6px; border:2px solid var(--line); cursor:pointer; flex:0 0 auto; display:grid; place-items:center; font-size:12px; color:transparent; }
+  .task.done .chk { background:var(--accent); border-color:var(--accent); color:#04130b; }
+  .task .ttext { flex:1; font-size:14.5px; }
+  .task.done .ttext { text-decoration:line-through; color:var(--muted); }
+  .task .pdot { width:8px; height:8px; border-radius:99px; flex:0 0 auto; }
+  .task .tdue { font-size:11px; color:var(--muted); }
+  .task .del { background:none; border:none; color:#5d6772; cursor:pointer; font-size:17px; }
+  .task .del:hover { color:var(--over); }
+  .prio-high { background:var(--over); } .prio-med { background:var(--warn); } .prio-low { background:var(--blue); }
+
+  .habit-add { display:flex; gap:8px; margin-bottom:14px; }
+  .habit { display:flex; align-items:center; gap:11px; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:11px 13px; margin-bottom:8px; }
+  .habit .hcheck { width:30px; height:30px; border-radius:8px; border:2px solid var(--line); cursor:pointer; flex:0 0 auto; display:grid; place-items:center; font-size:15px; color:transparent; }
+  .habit.on .hcheck { background:var(--accent); border-color:var(--accent); color:#04130b; }
+  .habit .hname { flex:1; font-weight:600; font-size:14.5px; }
+  .habit .streak { font-size:12px; color:var(--warn); font-weight:600; }
+  .habit .del { background:none; border:none; color:#5d6772; cursor:pointer; font-size:16px; }
+  textarea#dayNote { width:100%; min-height:120px; resize:vertical; background:var(--panel-2); border:1px solid var(--line); color:var(--text); border-radius:9px; padding:12px; font-family:inherit; font-size:14px; outline:none; }
+  textarea#dayNote:focus { border-color:var(--accent); }
+
+  /* health */
+  .whoop-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:14px; }
+  .wmetric label { display:block; font-size:11.5px; color:var(--muted); margin-bottom:5px; }
+  .whoop-today { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .whoop-today .wt { background:var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:9px 12px; font-size:13px; }
+  .whoop-today .wt b { color:var(--accent); }
+  .health-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 0; border-bottom:1px solid var(--line); }
+  .health-row:last-of-type { border-bottom:none; }
+  .health-row .hlabel { font-size:14.5px; font-weight:600; }
+  .health-row .hunit { color:var(--muted); font-size:12px; margin:0 4px; }
+  .counter { display:flex; align-items:center; gap:8px; }
+  .counter b { min-width:22px; text-align:center; font-size:17px; font-variant-numeric:tabular-nums; }
+  .mood-seg { display:flex; gap:4px; }
+  .mood-seg button { background:var(--panel-2); border:1px solid var(--line); border-radius:8px; width:38px; height:36px; cursor:pointer; font-size:17px; filter:grayscale(1) opacity(.6); }
+  .mood-seg button.active { border-color:var(--accent); filter:none; background:rgba(70,214,138,.12); }
+  .workout-add { display:grid; grid-template-columns:1fr 90px auto; gap:8px; margin-bottom:14px; }
 </style>
 </head>
 <body>
@@ -287,7 +336,7 @@
   <header class="top">
     <div class="brand">
       <div class="logo">V</div>
-      <div><h1>Vigor</h1><p>Fitness goals &amp; nutrition tracker</p></div>
+      <div><h1>Vigor</h1><p>Your health &amp; productivity, in one place</p></div>
     </div>
     <div class="head-right">
       <div class="today" id="today"></div>
@@ -296,6 +345,13 @@
     </div>
   </header>
 
+  <nav class="tabs-nav" id="appNav">
+    <button data-p="today" class="active">🍎 Nutrition</button>
+    <button data-p="planner">✅ Planner</button>
+    <button data-p="health">❤️ Health</button>
+  </nav>
+
+  <div class="page show" id="pageToday">
   <div class="grid">
     <div>
       <div class="card">
@@ -392,6 +448,97 @@
       <div class="card section-gap">
         <h2>This Week <span class="mini" id="weekAvg"></span></h2>
         <div class="chart" id="chart"></div>
+      </div>
+    </div>
+  </div>
+  </div><!-- /pageToday -->
+
+  <!-- ===================== PLANNER ===================== -->
+  <div class="page" id="pagePlanner">
+    <div class="grid">
+      <div>
+        <div class="card">
+          <h2>Today's Focus <span class="mini" id="taskSummary"></span></h2>
+          <div class="task-add">
+            <input type="text" id="taskText" placeholder="Add a task…" />
+            <select id="taskPrio">
+              <option value="high">High</option>
+              <option value="med" selected>Medium</option>
+              <option value="low">Low</option>
+            </select>
+            <input type="date" id="taskDue" />
+            <button class="btn" id="addTask">Add</button>
+          </div>
+          <div id="taskList" class="task-list"></div>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h2>Habits <span class="mini">tap to check off today</span></h2>
+          <div class="habit-add">
+            <input type="text" id="habitName" placeholder="New habit (e.g. Meditate)" />
+            <button class="btn" id="addHabit">Add</button>
+          </div>
+          <div id="habitList"></div>
+        </div>
+        <div class="card section-gap">
+          <h2>Quick Note</h2>
+          <textarea id="dayNote" placeholder="Brain-dump, plans, anything for today…"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== HEALTH ===================== -->
+  <div class="page" id="pageHealth">
+    <div class="grid">
+      <div>
+        <div class="card">
+          <h2>WHOOP / Recovery <span class="mini" id="whoopState">not linked</span></h2>
+          <div class="whoop-grid">
+            <div class="wmetric"><label>Recovery %</label><input type="number" id="wRec" min="0" max="100" /></div>
+            <div class="wmetric"><label>Day strain</label><input type="number" id="wStrain" min="0" max="21" step="0.1" /></div>
+            <div class="wmetric"><label>HRV (ms)</label><input type="number" id="wHrv" min="0" /></div>
+            <div class="wmetric"><label>Resting HR</label><input type="number" id="wRhr" min="0" /></div>
+            <div class="wmetric"><label>Sleep (h)</label><input type="number" id="wSleep" min="0" max="24" step="0.1" /></div>
+          </div>
+          <button class="btn block" id="saveWhoop">Save today's recovery</button>
+          <button class="btn ghost block" id="connectWhoop" style="margin-top:8px">🔗 Connect WHOOP account</button>
+          <div id="whoopToday" class="whoop-today"></div>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h2>Daily Health Log</h2>
+          <div class="health-row">
+            <span class="hlabel">💧 Water</span>
+            <div class="counter"><button class="step" id="waterMinus">−</button><b id="waterCount">0</b><span class="hunit">glasses</span><button class="step" id="waterPlus">+</button></div>
+          </div>
+          <div class="health-row">
+            <span class="hlabel">😴 Sleep</span>
+            <div><input type="number" id="sleepH" min="0" max="24" step="0.1" placeholder="hours" /></div>
+          </div>
+          <div class="health-row">
+            <span class="hlabel">⚖️ Weight</span>
+            <div><input type="number" id="weightLog" min="0" step="0.1" placeholder="kg" /></div>
+          </div>
+          <div class="health-row">
+            <span class="hlabel">⚡ Energy</span>
+            <div class="mood-seg" id="moodSeg">
+              <button data-v="1">😞</button><button data-v="2">😐</button><button data-v="3">🙂</button><button data-v="4">😀</button><button data-v="5">🤩</button>
+            </div>
+          </div>
+          <button class="btn block" id="saveHealth" style="margin-top:6px">Save daily log</button>
+        </div>
+        <div class="card section-gap">
+          <h2>Workouts</h2>
+          <div class="workout-add">
+            <input type="text" id="woType" placeholder="Type (e.g. Run, Lifting)" />
+            <input type="number" id="woMin" placeholder="min" min="0" />
+            <button class="btn" id="addWorkout">Add</button>
+          </div>
+          <div id="workoutList" class="log"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -498,7 +645,17 @@
     <p id="acctLine" style="margin-bottom:10px">—</p>
     <button class="btn ghost" id="logoutBtn">Log out</button>
 
-    <p style="margin-top:16px; margin-bottom:0">Keys stay on this device. Your food &amp; profile data syncs to your account. Nutrition values are approximate — verify before relying on them.</p>
+    <p style="margin-top:16px; margin-bottom:0">Keys stay on this device. Nutrition values are approximate — verify before relying on them.</p>
+  </div>
+</div>
+
+<div class="modal-bg" id="whoopModal">
+  <div class="modal">
+    <h3>Connect WHOOP</h3>
+    <p>Automatic WHOOP sync needs a small secure backend — WHOOP's login requires a private key that can't safely live in a web app like this one. So auto-sync isn't available in this version.</p>
+    <p>For now you can <b>enter your daily recovery, strain, HRV, resting HR and sleep by hand</b> on this screen, and the app tracks them alongside your nutrition and workouts.</p>
+    <p>Want real auto-sync later? It needs (1) a free WHOOP developer app and (2) a serverless function (e.g. a free Cloudflare Worker) to handle login securely. Ask and we'll set it up.</p>
+    <div class="mrow"><button class="btn" id="whoopClose" style="margin-left:auto">Got it</button></div>
   </div>
 </div>
 
@@ -615,13 +772,22 @@ window.__startVigorApp = function(session){
   let selectedFood=null; // {name, per100, serving, source}
   let suppNutrients=[]; // [{k,amount}]
 
+  // ---- life-app state ----
+  let tasks = B.tasks || [];          // [{id,text,prio,due,done}]
+  let habits = B.habits || [];        // [{id,name,days:{date:true}}]
+  let notes = B.notes || {};          // {date: text}
+  let health = B.health || {};        // {date:{water,sleep,weight,mood}}
+  let whoop = B.whoop || {};          // {date:{rec,strain,hrv,rhr,sleep}}
+  let workouts = B.workouts || [];    // [{id,date,type,min}]
+  let moodDraft = null;
+
   function totals(list){
     const t=emptyNutr();
     list.forEach(f=> ALLKEYS.forEach(k=> t[k]+=(f[k]||0)));
     return t;
   }
   function save(){
-    const bundle={goal,foods,goals,history,day,profile};
+    const bundle={goal,foods,goals,history,day,profile,tasks,habits,notes,health,whoop,workouts};
     store.set(CACHE, bundle);            // instant local cache (offline)
     if(session.persist) session.persist(bundle); // sync to cloud (debounced)
   }
@@ -1105,6 +1271,138 @@ window.__startVigorApp = function(session){
     save(); renderNutrition(); renderSuppLog();
   };
 
+  // ===================== LIFE APP: navigation =====================
+  document.querySelectorAll('#appNav button').forEach(b=> b.onclick=()=>{
+    document.querySelectorAll('#appNav button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    const p=b.dataset.p;
+    document.querySelectorAll('.page').forEach(pg=>pg.classList.remove('show'));
+    $('#page'+p.charAt(0).toUpperCase()+p.slice(1)).classList.add('show');
+    window.scrollTo(0,0);
+  });
+
+  // ===================== PLANNER: tasks =====================
+  const prioRank={high:0,med:1,low:2};
+  function renderTasks(){
+    const box=$('#taskList'); box.innerHTML='';
+    const sorted=[...tasks].sort((a,b)=> (a.done-b.done) || (prioRank[a.prio]-prioRank[b.prio]) || ((a.due||'~').localeCompare(b.due||'~')));
+    const open=tasks.filter(t=>!t.done).length;
+    $('#taskSummary').textContent = tasks.length ? open+' open · '+(tasks.length-open)+' done' : '';
+    if(!tasks.length){ box.innerHTML='<div class="empty">No tasks yet. Add your first above.</div>'; return; }
+    sorted.forEach(t=>{
+      const el=document.createElement('div'); el.className='task'+(t.done?' done':'');
+      const dueTxt = t.due ? new Date(t.due+'T00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'}) : '';
+      el.innerHTML='<div class="chk">✓</div><span class="pdot prio-'+t.prio+'"></span>'+
+        '<span class="ttext">'+esc(t.text)+(dueTxt?' <span class="tdue">· '+dueTxt+'</span>':'')+'</span>'+
+        '<button class="del">×</button>';
+      el.querySelector('.chk').onclick=()=>{ t.done=!t.done; save(); renderTasks(); };
+      el.querySelector('.del').onclick=()=>{ tasks=tasks.filter(x=>x.id!==t.id); save(); renderTasks(); };
+      box.appendChild(el);
+    });
+  }
+  function addTask(){
+    const text=$('#taskText').value.trim(); if(!text) return;
+    tasks.push({id:id(),text,prio:$('#taskPrio').value,due:$('#taskDue').value||'',done:false});
+    $('#taskText').value=''; $('#taskDue').value=''; save(); renderTasks();
+  }
+  $('#addTask').onclick=addTask;
+  $('#taskText').addEventListener('keydown',e=>{ if(e.key==='Enter') addTask(); });
+
+  // ===================== PLANNER: habits =====================
+  function streak(h){
+    let s=0; const d=new Date();
+    for(;;){ const ds=d.toLocaleDateString('en-CA'); if(h.days&&h.days[ds]){ s++; d.setDate(d.getDate()-1); } else break; }
+    return s;
+  }
+  function renderHabits(){
+    const box=$('#habitList'); box.innerHTML='';
+    const t=todayStr();
+    if(!habits.length){ box.innerHTML='<div class="empty">No habits yet. Add one above.</div>'; return; }
+    habits.forEach(h=>{
+      const on=h.days&&h.days[t]; const st=streak(h);
+      const el=document.createElement('div'); el.className='habit'+(on?' on':'');
+      el.innerHTML='<div class="hcheck">✓</div><span class="hname">'+esc(h.name)+'</span>'+
+        (st?'<span class="streak">🔥 '+st+'</span>':'')+'<button class="del">×</button>';
+      el.querySelector('.hcheck').onclick=()=>{ h.days=h.days||{}; if(h.days[t]) delete h.days[t]; else h.days[t]=true; save(); renderHabits(); };
+      el.querySelector('.del').onclick=()=>{ habits=habits.filter(x=>x.id!==h.id); save(); renderHabits(); };
+      box.appendChild(el);
+    });
+  }
+  $('#addHabit').onclick=()=>{ const n=$('#habitName').value.trim(); if(!n) return; habits.push({id:id(),name:n,days:{}}); $('#habitName').value=''; save(); renderHabits(); };
+
+  // ---- day note ----
+  $('#dayNote').addEventListener('input', ()=>{ notes[todayStr()]=$('#dayNote').value; save(); });
+  function renderNote(){ $('#dayNote').value = notes[todayStr()] || ''; }
+
+  // ===================== HEALTH: daily log =====================
+  function renderHealth(){
+    const t=todayStr(); const h=health[t]||{};
+    $('#waterCount').textContent = h.water||0;
+    $('#sleepH').value = h.sleep!=null?h.sleep:'';
+    $('#weightLog').value = h.weight!=null?h.weight:'';
+    moodDraft = h.mood||null;
+    document.querySelectorAll('#moodSeg button').forEach(b=> b.classList.toggle('active', +b.dataset.v===moodDraft));
+  }
+  function setWater(delta){ const t=todayStr(); health[t]=health[t]||{}; health[t].water=Math.max(0,(health[t].water||0)+delta); save(); renderHealth(); }
+  $('#waterPlus').onclick=()=>setWater(1);
+  $('#waterMinus').onclick=()=>setWater(-1);
+  document.querySelectorAll('#moodSeg button').forEach(b=> b.onclick=()=>{ moodDraft=+b.dataset.v; document.querySelectorAll('#moodSeg button').forEach(x=>x.classList.toggle('active',x===b)); });
+  $('#saveHealth').onclick=()=>{
+    const t=todayStr(); health[t]=health[t]||{};
+    const s=parseFloat($('#sleepH').value), w=parseFloat($('#weightLog').value);
+    if(!isNaN(s)) health[t].sleep=s; if(!isNaN(w)) health[t].weight=w; if(moodDraft) health[t].mood=moodDraft;
+    save(); renderHealth(); flash('#saveHealth','Saved ✓');
+  };
+
+  // ===================== HEALTH: WHOOP =====================
+  function renderWhoop(){
+    const t=todayStr(); const w=whoop[t]||{};
+    $('#wRec').value=w.rec!=null?w.rec:''; $('#wStrain').value=w.strain!=null?w.strain:'';
+    $('#wHrv').value=w.hrv!=null?w.hrv:''; $('#wRhr').value=w.rhr!=null?w.rhr:''; $('#wSleep').value=w.sleep!=null?w.sleep:'';
+    const has=Object.keys(w).length;
+    $('#whoopState').textContent = has?'logged today':'manual entry';
+    const bits=[];
+    if(w.rec!=null) bits.push('Recovery <b>'+w.rec+'%</b>');
+    if(w.strain!=null) bits.push('Strain <b>'+w.strain+'</b>');
+    if(w.hrv!=null) bits.push('HRV <b>'+w.hrv+'ms</b>');
+    if(w.rhr!=null) bits.push('RHR <b>'+w.rhr+'</b>');
+    if(w.sleep!=null) bits.push('Sleep <b>'+w.sleep+'h</b>');
+    $('#whoopToday').innerHTML = bits.length? bits.map(b=>'<span class="wt">'+b+'</span>').join('') : '';
+  }
+  $('#saveWhoop').onclick=()=>{
+    const t=todayStr(); const w={};
+    const rec=parseFloat($('#wRec').value), st=parseFloat($('#wStrain').value), hrv=parseFloat($('#wHrv').value), rhr=parseFloat($('#wRhr').value), sl=parseFloat($('#wSleep').value);
+    if(!isNaN(rec))w.rec=rec; if(!isNaN(st))w.strain=st; if(!isNaN(hrv))w.hrv=hrv; if(!isNaN(rhr))w.rhr=rhr; if(!isNaN(sl))w.sleep=sl;
+    whoop[t]=w; save(); renderWhoop(); flash('#saveWhoop','Saved ✓');
+  };
+  $('#connectWhoop').onclick=()=> $('#whoopModal').classList.add('show');
+  $('#whoopClose').onclick=()=> $('#whoopModal').classList.remove('show');
+  $('#whoopModal').addEventListener('click',e=>{ if(e.target===$('#whoopModal')) $('#whoopModal').classList.remove('show'); });
+
+  // ===================== HEALTH: workouts =====================
+  function renderWorkouts(){
+    const box=$('#workoutList'); box.innerHTML='';
+    if(!workouts.length){ box.innerHTML='<div class="empty">No workouts logged.</div>'; return; }
+    [...workouts].reverse().forEach(w=>{
+      const el=document.createElement('div'); el.className='item';
+      const dt=new Date(w.date+'T00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
+      el.innerHTML='<span class="meal-dot" style="background:var(--blue)"></span>'+
+        '<span class="name"><b>'+esc(w.type)+'</b> <span class="sub">'+dt+'</span></span>'+
+        '<span class="kcal">'+w.min+' min</span><button class="del">×</button>';
+      el.querySelector('.del').onclick=()=>{ workouts=workouts.filter(x=>x.id!==w.id); save(); renderWorkouts(); };
+      box.appendChild(el);
+    });
+  }
+  $('#addWorkout').onclick=()=>{
+    const type=$('#woType').value.trim(); const min=parseInt($('#woMin').value,10);
+    if(!type||!min) return;
+    workouts.push({id:id(),date:todayStr(),type,min}); $('#woType').value='';$('#woMin').value='';
+    save(); renderWorkouts();
+  };
+
+  function flash(sel,txt){ const b=$(sel); const o=b.textContent; b.textContent=txt; setTimeout(()=>{b.textContent=o;},1100); }
+  function renderLife(){ renderTasks(); renderHabits(); renderNote(); renderHealth(); renderWhoop(); renderWorkouts(); }
+
   // ---- account / logout ----
   if($('#acctLine')) $('#acctLine').textContent='Signed in as '+(session.username?('@'+session.username+' · '):'')+(session.email||'');
   if($('#logoutBtn')) $('#logoutBtn').onclick=()=>{ if(window.__vigorLogout) window.__vigorLogout(); };
@@ -1112,8 +1410,8 @@ window.__startVigorApp = function(session){
   // ---- init ----
   $('#today').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});
   if(!profile){ $('#onboarding').classList.add('show'); }
-  checkRollover(); renderAll();
-  setInterval(()=>{ if(todayStr()!==day){ checkRollover(); renderAll(); } }, 60000);
+  checkRollover(); renderAll(); renderLife();
+  setInterval(()=>{ if(todayStr()!==day){ checkRollover(); renderAll(); renderLife(); } }, 60000);
 };
 </script>
 
